@@ -1,0 +1,220 @@
+{
+  "results": [
+    {
+      "id": "A1",
+      "name": "Health check",
+      "status_code": 200,
+      "passed": true,
+      "evidence": "status=ok, body={\"status\": \"ok\", \"service\": \"medivault-diet-service\"}",
+      "response_text": ""
+    },
+    {
+      "id": "A2",
+      "name": "Provider list (auth)",
+      "status_code": 200,
+      "passed": true,
+      "evidence": "body={\"providers\": [{\"name\": \"groq\", \"available\": true, \"model\": \"llama-3.3-70b-versatile\"}, {\"name\": \"gemini\", \"available\": true, \"model\": \"gemini-2.0-flash\"}], \"active_provider\": \"groq\", \"fallback_chain\": [\"groq\", \"gemini\"]}",
+      "response_text": ""
+    },
+    {
+      "id": "A3",
+      "name": "No JWT \u2192 401",
+      "status_code": 401,
+      "passed": true,
+      "evidence": "body={\"detail\":\"Missing or malformed Authorization header\"}",
+      "response_text": ""
+    },
+    {
+      "id": "A4",
+      "name": "Malformed JWT \u2192 401",
+      "status_code": 401,
+      "passed": true,
+      "evidence": "body={\"detail\":\"Invalid or expired token\"}",
+      "response_text": ""
+    },
+    {
+      "id": "A5",
+      "name": "Expired JWT \u2192 401",
+      "status_code": 401,
+      "passed": true,
+      "evidence": "body={\"detail\":\"Invalid or expired token\"}",
+      "response_text": ""
+    },
+    {
+      "id": "A6",
+      "name": "Doctor JWT \u2192 403",
+      "status_code": 403,
+      "passed": true,
+      "evidence": "body={\"detail\":\"Role 'doctor' is not allowed. Patient role required.\"}",
+      "response_text": ""
+    },
+    {
+      "id": "A7",
+      "name": "Non-existent route \u2192 404 JSON",
+      "status_code": 404,
+      "passed": true,
+      "evidence": "content-type=application/json",
+      "response_text": ""
+    },
+    {
+      "id": "A8",
+      "name": "Wrong HTTP method \u2192 405",
+      "status_code": 405,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "B1",
+      "name": "Create session (default Indian)",
+      "status_code": 502,
+      "passed": false,
+      "evidence": "  HTTP 201: FAIL\n  session_id: FAIL\n  status active: FAIL\n  provider valid: FAIL\n  diet_plan present: FAIL\n  Indian foods >= 3: FAIL\n  diabetes mention: FAIL\n  hypertension mention: FAIL\n  grapefruit warning: FAIL\n  no shellfish: PASS\n  disclaimer: FAIL\n  Indian foods found: []",
+      "response_text": ""
+    },
+    {
+      "id": "B2",
+      "name": "North Indian vegetarian",
+      "status_code": 502,
+      "passed": false,
+      "evidence": "north_foods=False, no_meat=True",
+      "response_text": ""
+    },
+    {
+      "id": "B3",
+      "name": "South Indian",
+      "status_code": 502,
+      "passed": false,
+      "evidence": "south_foods=False",
+      "response_text": ""
+    },
+    {
+      "id": "B4",
+      "name": "Patient B (no diagnoses)",
+      "status_code": 502,
+      "passed": false,
+      "evidence": "plan_exists=False, indian=False",
+      "response_text": ""
+    },
+    {
+      "id": "B5",
+      "name": "Vector context enrichment",
+      "status_code": 200,
+      "passed": true,
+      "evidence": "chunks=8, used=True, notes=True",
+      "response_text": ""
+    },
+    {
+      "id": "D4(0)",
+      "name": "meal_count=0 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D4(-1)",
+      "name": "meal_count=-1 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D4(2)",
+      "name": "meal_count=2 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D5(8)",
+      "name": "meal_count=8 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D5(10)",
+      "name": "meal_count=10 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D5(100)",
+      "name": "meal_count=100 \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D6",
+      "name": "Non-JSON body \u2192 422",
+      "status_code": 422,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "D7",
+      "name": "XSS in preferences \u2192 sanitised",
+      "status_code": 502,
+      "passed": false,
+      "evidence": "no_script_in_plan=True",
+      "response_text": ""
+    },
+    {
+      "id": "D8",
+      "name": "NoSQL injection in path \u2192 404/422",
+      "status_code": 404,
+      "passed": true,
+      "evidence": "",
+      "response_text": ""
+    },
+    {
+      "id": "F1",
+      "name": "Complete then message",
+      "status_code": 0,
+      "passed": false,
+      "evidence": "Could not create session",
+      "response_text": ""
+    },
+    {
+      "id": "F2",
+      "name": "Expire then message",
+      "status_code": 0,
+      "passed": false,
+      "evidence": "Could not create session",
+      "response_text": ""
+    },
+    {
+      "id": "F3",
+      "name": "Delete + cascade",
+      "status_code": 0,
+      "passed": false,
+      "evidence": "Could not create session",
+      "response_text": ""
+    },
+    {
+      "id": "I1",
+      "name": "3 simultaneous sessions",
+      "status_code": 201,
+      "passed": false,
+      "evidence": "all_201=False, unique_ids=False, ids=[]",
+      "response_text": ""
+    }
+  ],
+  "summary": {
+    "total": 26,
+    "passed": 17,
+    "failed": 9,
+    "session_a_id": "",
+    "session_b_id": "",
+    "b1_plan": ""
+  }
+}
