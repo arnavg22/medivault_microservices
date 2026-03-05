@@ -3,7 +3,7 @@
 # Optimised for Render deployment
 # ================================
 
-FROM python:3.9-slim
+FROM python:3.11-slim-bookworm
 
 # Install system-level dependencies for OCR
 # tesseract-ocr   → Tesseract OCR engine (replaces Windows install)
@@ -29,6 +29,11 @@ COPY . .
 
 # Create data directories (PDFs ingested at runtime, not baked in)
 RUN mkdir -p data/raw_pdfs data/processed_text
+
+# Pre-download the fastembed model into the image so startup is instant
+# and there is no extra RAM spike from downloading at runtime.
+ENV FASTEMBED_CACHE_PATH=/app/models
+RUN python -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))" 
 
 # Expose port (Render uses $PORT env var)
 EXPOSE 8000

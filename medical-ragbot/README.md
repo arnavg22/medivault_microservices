@@ -2,6 +2,85 @@
 
 **100% Cost-Free Production-Ready RAG System for Medical Documents**
 
+---
+
+## 🧪 Local Testing
+
+### Prerequisites
+Ensure you have Python 3.8+ and MongoDB Atlas configured.
+
+### Step 1: Check Setup
+Run the setup verification script to catch configuration issues early:
+```bash
+python check_setup.py
+```
+
+This will verify:
+- ✅ All required .env variables are present
+- ✅ MongoDB connection is working
+- ✅ Vector search index exists and is READY
+- ✅ Groq API key is valid
+- ✅ Embedding model can be loaded
+- ✅ Directories are writable
+
+**Fix any issues before proceeding!**
+
+### Step 2: Create Test PDF (Optional)
+Generate a realistic test PDF with medical content:
+```bash
+python create_test_pdf.py
+```
+
+This creates `data/raw_pdfs/test_prescription.pdf` with:
+- Patient information and diagnosis
+- Medications with dosages
+- Lab results table
+- Vital signs
+- Follow-up instructions
+
+### Step 3: Start Server
+Start the FastAPI server:
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+The server will start at `http://localhost:8000`
+
+**Note:** First startup will download the embedding model (~400MB). This only happens once.
+
+### Step 4: Run Tests (New Terminal)
+Open a new terminal and run the automated test suite:
+```bash
+python test_routes.py
+```
+
+This tests all MediVault routes:
+- ✅ Health check
+- ✅ PDF upload with patient isolation
+- ✅ Patient document listing
+- ✅ RAG query with Groq
+- ✅ Query with section filtering
+- ✅ Health summary generation
+- ✅ Error handling (no docs)
+- ✅ Document deletion
+- ✅ Cleanup verification
+
+**Expected:** All 9 tests should pass ✅
+
+### Step 5: Manual API Testing
+Open the auto-generated interactive API docs:
+```bash
+http://localhost:8000/docs
+```
+
+FastAPI provides a Swagger UI where you can:
+- View all endpoints and their schemas
+- Test routes interactively
+- See request/response examples
+- Try different patient IDs and queries
+
+---
+
 ##  Production Features
 
 ###  **Zero-Cost Stack**

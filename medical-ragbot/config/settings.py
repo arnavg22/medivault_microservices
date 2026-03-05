@@ -10,37 +10,34 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # ========== LLM Configuration (LLAMA 3 - Production: 100% Local) ===========
-    llm_provider: str = BaseSettings().model_config.get('LLM_PROVIDER', 'groq')
-    llm_model: str = BaseSettings().model_config.get('LLM_MODEL', 'llama-3.1-8b-instant')
-    llm_temperature: float = float(BaseSettings().model_config.get('LLM_TEMPERATURE', 0.1))
-    llm_max_tokens: int = int(BaseSettings().model_config.get('LLM_MAX_TOKENS', 1500))
+    llm_provider: str = 'groq'
+    llm_model: str = 'llama-3.1-8b-instant'
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 1500
 
     # Ollama Configuration (for local LLAMA 3)
-    ollama_base_url: str = BaseSettings().model_config.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+    ollama_base_url: str = 'http://localhost:11434'
 
     # Cloud API Keys (if using cloud providers)
-    together_api_key: Optional[str] = BaseSettings().model_config.get('TOGETHER_API_KEY', None)
-    groq_api_key: Optional[str] = BaseSettings().model_config.get('GROQ_API_KEY', None)
+    together_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
 
     # ========== MongoDB Configuration ========== 
-    mongodb_uri: str = BaseSettings().model_config.get('MONGODB_URI', 'mongodb://localhost:27017')
-    mongodb_db_name: str = BaseSettings().model_config.get('MONGODB_DB_NAME', 'medical_ragbot')
-    mongodb_collection_name: str = BaseSettings().model_config.get('MONGODB_COLLECTION_NAME', 'medical_vectors')
+    mongodb_uri: str = 'mongodb://localhost:27017'
+    mongodb_db_name: str = 'medical_ragbot'
+    mongodb_collection_name: str = 'medical_vectors'
     
     # ========== Embedding Configuration (Production-Grade) ==========
     # Production: Use local embeddings for cost-free deployment
     use_local_embeddings: bool = True
     
-    # Production model: bge-base-en-v1.5 (SOTA for retrieval, 768 dim)
-    local_embedding_model: str = "BAAI/bge-base-en-v1.5"
-    # BGE (BAAI General Embedding) - Best open-source model for semantic search
-    # - 768 dimensions (better than MiniLM's 384)
-    # - Optimized for retrieval tasks
-    # - Strong performance on medical/technical text
-    
+    # fastembed model: BAAI/bge-small-en-v1.5 (384 dim, ONNX, no PyTorch, ~50MB RAM)
+    local_embedding_model: str = "BAAI/bge-small-en-v1.5"
+
     # OpenAI embeddings (only if use_local_embeddings=False)
     embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = 768  # Production standard (matches BGE)
+    embedding_dimension: int = 384  # bge-small-en-v1.5 outputs 384 dims
     
     # ========== Chunking Configuration (Production-Optimized) ==========
     chunk_size: int = 600  # Production: Smaller chunks for precise retrieval

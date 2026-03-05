@@ -64,6 +64,10 @@ class MongoDBVectorStore:
             },
             {
               "type": "filter",
+              "path": "metadata.patient_id"
+            },
+            {
+              "type": "filter",
               "path": "metadata.section_type"
             },
             {
@@ -72,6 +76,9 @@ class MongoDBVectorStore:
             }
           ]
         }
+
+        CRITICAL: metadata.patient_id MUST be a filter field.
+        Without it, patient_search() filters are ignored and patients see each other's records.
         """
         # Create text index for fallback search
         try:
@@ -180,6 +187,103 @@ class MongoDBVectorStore:
             return [str(_id) for _id in result.inserted_ids]
         except PyMongoError as e:
             logger.error(f"Document insertion failed: {e}")
+            raise
+    
+    def add_patient_document(
+        self,
+        chunks: List[Dict[str, any]],
+        patient_id: str,
+        document_type: str = "other"
+    ) -> tuple[str, List[str]]:
+        """
+        Add document chunks for a MediVault patient with shared doc_id.
+        All chunks from the same file share one doc_id for easy deletion.
+        
+        Args:
+            chunks: List of chunk dictionaries
+            patient_id: Patient's MongoDB ObjectId from MediVault
+            document_type: Type of medical document
+            
+        Returns:
+            Tuple of (doc_id, list of inserted MongoDB IDs)
+        """
+        if not chunks:
+            logger.warning("No chunks provided to add_patient_document")
+            return ("", [])
+        
+        # Generate ONE shared doc_id for all chunks (timestamp-based for uniqueness)
+        import uuid
+        doc_id = uuid.uuid4().hex[:16]
+        
+        logger.info(f"Adding patient document: patient_id={patient_id}, doc_id={doc_id}, chunks={len(chunks)}")
+        
+        # Extract texts for batch embedding
+        texts = [chunk["text"] for chunk in chunks]
+        
+        # Generate embeddings in batch
+        try:
+            embeddings = self.embedding_generator.generate_embeddings_batch(texts)
+        except Exception as e:
+            logger.error(f"Batch embedding failed, falling back to individual: {e}")
+            embeddings = [
+                self.embedding_generator.generate_embedding(text) 
+                for text in texts
+            ]
+        
+        # Prepare documents with SHARED doc_id
+        documents = []
+        for chunk, embedding in zip(chunks, embeddings):
+            doc = {
+                "doc_id": doc_id,  # SHARED across all chunks from this file
+                "text": chunk["text"],
+                "embedding": embedding,
+                "metadata": {
+                    # MediVault patient isolation (MANDATORY)
+                    "patient_id": patient_id,
+                    
+                    # Core identifiers
+                    "chunk_id": chunk.get("chunk_id", 0),
+                    "chunk_type": chunk.get("chunk_type", "text"),
+                    "page": chunk.get("page", None),
+                    "position_in_doc": chunk.get("position_in_doc", 0),
+                    
+                    # Source tracking
+                    "source": chunk.get("source", ""),
+                    "filename": chunk.get("filename", ""),
+                    
+                    # Semantic classification
+                    "section_type": chunk.get("section_type", "general"),
+                    
+                    # Table-specific
+                    "table_number": chunk.get("table_number", None),
+                    
+                    # Processing metadata
+                    "extraction_method": chunk.get("extraction_method", "unknown"),
+                    
+                    # Medical metadata
+                    "doctor_name": chunk.get("doctor_name"),
+                    "hospital_name": chunk.get("hospital_name"),
+                    "report_date": chunk.get("report_date"),
+                    "report_type": document_type,
+                    
+                    # Timestamps
+                    "created_at": datetime.utcnow().isoformat(),
+                    "ingestion_date": chunk.get("date", datetime.utcnow().isoformat()),
+                    
+                    # Versioning
+                    "version": settings.document_version if settings.enable_document_versioning else "1.0",
+                    "schema_version": "2.2",  # MediVault patient-isolation
+                }
+            }
+            documents.append(doc)
+        
+        # Batch insert
+        try:
+            result = self.collection.insert_many(documents, ordered=False)
+            logger.info(f"Successfully inserted {len(result.inserted_ids)} chunks for doc_id={doc_id}")
+            return (doc_id, [str(_id) for _id in result.inserted_ids])
+        except PyMongoError as e:
+            logger.error(f"Patient document insertion failed: {e}")
             raise
     
     def _generate_doc_id(self, filename: str, chunk_id: int) -> str:
@@ -440,6 +544,170 @@ class MongoDBVectorStore:
         except PyMongoError as e:
             logger.error(f"Stats query failed: {e}")
             return {"error": str(e)}
+    
+    # ========== MEDIVAULT PATIENT-SPECIFIC METHODS ==========
+    
+    def patient_search(
+        self,
+        patient_id: str,
+        query: str,
+        k: int = 5,
+        section_type: Optional[str] = None
+    ) -> List[Dict[str, any]]:
+        """
+        Vector search filtered by patient_id (MediVault multi-tenant isolation).
+        
+        Args:
+            patient_id: Patient's MongoDB ObjectId from MediVault backend
+            query: Search query
+            k: Number of results
+            section_type: Optional section filter
+            
+        Returns:
+            Results belonging only to this patient
+        """
+        # Generate query embedding
+        try:
+            query_embedding = self.embedding_generator.generate_embedding(query)
+        except Exception as e:
+            logger.error(f"Query embedding failed: {e}")
+            return []
+        
+        # Build metadata filter with MANDATORY patient_id
+        metadata_filter = {"metadata.patient_id": patient_id}
+        if section_type:
+            metadata_filter["metadata.section_type"] = section_type
+        
+        # Build vector search pipeline
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": settings.vector_index_name,
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": k * settings.vector_search_candidates_multiplier,
+                    "limit": k,
+                    "filter": metadata_filter
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "text": 1,
+                    "metadata": 1,
+                    "score": {"$meta": "vectorSearchScore"}
+                }
+            }
+        ]
+        
+        try:
+            results = list(self.collection.aggregate(pipeline))
+            logger.info(f"Patient search (patient_id={patient_id}): {len(results)} results")
+            return results
+        except Exception as e:
+            logger.error(f"Patient search failed: {e}")
+            return []
+    
+    def get_patient_documents(self, patient_id: str) -> List[Dict]:
+        """
+        Get deduplicated list of documents for a patient.
+        Used for MediVault "My Documents" screen.
+        
+        Args:
+            patient_id: Patient's MongoDB ObjectId
+            
+        Returns:
+            List of unique documents with metadata
+        """
+        try:
+            pipeline = [
+                # Filter by patient
+                {"$match": {"metadata.patient_id": patient_id}},
+                # Group by doc_id (all chunks from same file share doc_id)
+                {"$group": {
+                    "_id": "$doc_id",
+                    "filename": {"$first": "$metadata.filename"},
+                    "document_type": {"$first": "$metadata.report_type"},
+                    "document_date": {"$first": "$metadata.report_date"},
+                    "created_at": {"$first": "$metadata.created_at"},
+                    "chunks": {"$sum": 1}
+                }},
+                {"$sort": {"created_at": -1}}
+            ]
+            
+            docs = list(self.collection.aggregate(pipeline))
+            
+            # Format for MediVault response
+            formatted_docs = []
+            for doc in docs:
+                formatted_docs.append({
+                    "doc_id": doc["_id"],
+                    "filename": doc.get("filename", "unknown.pdf"),
+                    "document_type": doc.get("document_type") or "other",
+                    "document_date": doc.get("document_date"),
+                    "chunks": doc["chunks"],
+                    "ingested_at": doc.get("created_at")
+                })
+            
+            return formatted_docs
+        except PyMongoError as e:
+            logger.error(f"Get patient documents failed: {e}")
+            return []
+    
+    def get_patient_stats(self, patient_id: str) -> Dict:
+        """Get statistics for a specific patient's documents."""
+        try:
+            # Total chunks
+            total_chunks = self.collection.count_documents({"metadata.patient_id": patient_id})
+            
+            # Unique documents
+            pipeline = [
+                {"$match": {"metadata.patient_id": patient_id}},
+                {"$group": {"_id": "$doc_id"}},
+                {"$count": "total"}
+            ]
+            doc_count_result = list(self.collection.aggregate(pipeline))
+            total_docs = doc_count_result[0]["total"] if doc_count_result else 0
+            
+            return {
+                "patient_id": patient_id,
+                "total_documents": total_docs,
+                "total_chunks": total_chunks
+            }
+        except PyMongoError as e:
+            logger.error(f"Get patient stats failed: {e}")
+            return {"error": str(e)}
+    
+    def delete_by_doc_id(self, patient_id: str, doc_id: str) -> int:
+        """
+        Delete all chunks for a specific document, with patient_id verification.
+        
+        Args:
+            patient_id: Patient's MongoDB ObjectId (for security)
+            doc_id: Document ID to delete
+            
+        Returns:
+            Number of chunks deleted
+        """
+        try:
+            result = self.collection.delete_many({
+                "doc_id": doc_id,
+                "metadata.patient_id": patient_id
+            })
+            logger.info(f"Deleted {result.deleted_count} chunks for doc_id={doc_id}, patient_id={patient_id}")
+            return result.deleted_count
+        except PyMongoError as e:
+            logger.error(f"Delete by doc_id failed: {e}")
+            return 0
+    
+    def check_patient_has_documents(self, patient_id: str) -> bool:
+        """Check if a patient has any documents ingested."""
+        try:
+            count = self.collection.count_documents({"metadata.patient_id": patient_id}, limit=1)
+            return count > 0
+        except PyMongoError as e:
+            logger.error(f"Check patient documents failed: {e}")
+            return False
 
 
 # Example usage

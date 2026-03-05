@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app/main.py"
+    }
+  ],
+  "env": {
+    "LLM_PROVIDER": "groq",
+    "LLM_MODEL": "llama-3.1-8b-instant",
+    "USE_LOCAL_EMBEDDINGS": "false"
+  }
+}

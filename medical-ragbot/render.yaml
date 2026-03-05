@@ -6,15 +6,32 @@
 services:
   - type: web
     name: medivault-ragbot
-    runtime: docker              # Use our Dockerfile (handles OCR deps automatically)
-    dockerfilePath: ./Dockerfile
-    region: oregon               # or singapore / frankfurt — pick closest to your users
+    runtime: docker
 
-    # Render sets $PORT automatically — our Dockerfile reads it
-    # Start command is defined in Dockerfile CMD
+    # Build and start commands are handled by the Dockerfile
+    # Dockerfile uses python:3.11-slim-bookworm and runs:
+    #   uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+    
+    # Production: Health check configuration
+    healthCheckPath: /health
+    
+    # Production: Instance configuration
+    plan: free  # Change to 'starter' or higher for production workloads
+    numInstances: 1  # Scale up for high availability
+    
+    # Region — pick closest to your users
+    region: oregon  # or singapore / frankfurt
+    
+    # Production: Auto-deploy on every push to main
+    autoDeploy: true
 
-    # Environment variables — set these in Render Dashboard
-    # (DO NOT put real values here — this file is in git)
+    # ========================================
+    # Environment Variables
+    # ========================================
+    # CRITICAL: Set these secrets in Render Dashboard:
+    #   1. GROQ_API_KEY - Your Groq API key for LLAMA 3.1
+    #   2. MONGODB_URI - Your MongoDB Atlas connection string
+    # ========================================
     envVars:
       #  LLM 
       - key: LLM_PROVIDER
@@ -42,17 +59,9 @@ services:
       - key: USE_LOCAL_EMBEDDINGS
         value: "true"
       - key: LOCAL_EMBEDDING_MODEL
-        value: BAAI/bge-base-en-v1.5
+        value: BAAI/bge-small-en-v1.5
       - key: EMBEDDING_DIMENSION
-        value: "768"
-
-      #  OCR — Linux paths (Dockerfile installs these) 
-      - key: TESSERACT_PATH
-        value: /usr/bin/tesseract     # installed by apt-get in Dockerfile
-      - key: POPPLER_PATH
-        value: ""                     # poppler-utils is in PATH — leave blank
-      - key: OCR_LANGUAGE
-        value: eng
+        value: "384"
 
       #  Chunking 
       - key: CHUNK_SIZE
@@ -65,9 +74,9 @@ services:
         value: "0.0.0.0"
 
       #  CORS — restrict to your frontend domain 
-      # Replace with your actual frontend URL
+      # Replace with your actual frontend URL before production
       - key: CORS_ORIGINS
-        value: '["*"]'               # TODO: change to your frontend URL before going live
+        value: '["*"]'  # TODO: Change to actual frontend URL for production
 
       #  Vector Search 
       - key: VECTOR_INDEX_NAME
@@ -76,9 +85,3 @@ services:
         value: "5"
       - key: MAX_CONTEXT_LENGTH
         value: "3500"
-
-    # Health check — Render pings this to verify app is up
-    healthCheckPath: /health
-
-    # Auto-deploy on every push to main
-    autoDeploy: true

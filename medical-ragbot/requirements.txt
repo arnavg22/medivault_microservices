@@ -7,49 +7,51 @@
 # ========================================
 
 # ========== PDF Processing ==========
-pdfplumber==0.10.3
-pdf2image==1.17.0
-pypdf==4.0.1
+pdfplumber>=0.11.0
+pdf2image>=1.17.0
+pypdf>=5.0.0
 
 # ========== OCR ==========
-pytesseract==0.3.10
-Pillow==10.2.0
+pytesseract>=0.3.10
+Pillow>=11.0.0
 
 # ========== Vector Store & Database ==========
-pymongo==4.6.1
+pymongo>=4.6.0
 
 # ========== LLM & Embeddings ==========
-# Local embeddings (free, runs on your machine)
-sentence-transformers==2.3.1
-torch>=2.0.0
+# Local embeddings via ONNX — no PyTorch needed, ~50MB RAM on Render free tier
+fastembed>=0.3.0
 
 # HTTP client for Groq / Ollama API
-requests==2.31.0
+requests>=2.31.0
+groq>=1.0.0
 
 # OpenAI SDK (used in llm_handler for API-compatible calls to Groq)
-openai==1.10.0
+openai>=1.10.0
 
 # ========== API Framework ==========
-fastapi==0.109.0
-uvicorn==0.27.0
-python-multipart==0.0.6
+fastapi>=0.109.0
+uvicorn>=0.27.0
+python-multipart>=0.0.6
 
 # ========== Data Validation ==========
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
 # ========== Utilities ==========
-python-dotenv==1.0.0
-numpy==1.26.3
-tenacity==8.2.3
-tqdm==4.66.1
+python-dotenv>=1.0.0
+numpy>=1.26.0
+tenacity>=8.2.0
+tqdm>=4.66.0
 
 # ========== LangChain (retrieval helpers) ==========
-langchain==0.1.0
-langchain-community==0.0.13
-langchain-core==0.1.9
+langchain-text-splitters>=0.3.0
+langchain-core>=0.3.0
 
 # ========== Testing (dev only — not needed in production) ==========
-pytest==7.4.4
-pytest-asyncio==0.21.1
-httpx==0.25.2
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0
+
+# ========== PDF Generation (test PDFs) ==========
+reportlab>=4.0.0

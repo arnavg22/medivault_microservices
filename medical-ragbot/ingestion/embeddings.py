@@ -1,7 +1,7 @@
 """
 Embedding Generation Module
 Handles text-to-vector conversion for semantic search
-Supports both OpenAI and FREE local embeddings
+Uses fastembed (ONNX Runtime) — no PyTorch dependency, ~50MB RAM
 """
 from typing import List, Union
 import logging
@@ -13,11 +13,12 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
+    from fastembed import TextEmbedding
+    FASTEMBED_AVAILABLE = True
 except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    FASTEMBED_AVAILABLE = False
 
+import os
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import settings
@@ -30,7 +31,7 @@ class EmbeddingGenerator:
     """
     Generates embeddings for text chunks.
     Supports:
-    1. Local embeddings (sentence-transformers) - 100% FREE
+    1. Local embeddings (fastembed / ONNX) - 100% FREE, no PyTorch
     2. OpenAI embeddings (paid but high quality)
     """
     
@@ -51,22 +52,22 @@ class EmbeddingGenerator:
         logger.info(f"Initialized EmbeddingGenerator: type={self.embedding_type}, model={self.model}, dim={self.dimension}")
     
     def _init_local_embeddings(self):
-        """Initialize local sentence-transformers model (FREE)"""
-        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+        """Initialize fastembed ONNX model (FREE, no PyTorch, ~50MB RAM)"""
+        if not FASTEMBED_AVAILABLE:
             raise ImportError(
-                "sentence-transformers not installed. Install with: pip install sentence-transformers"
+                "fastembed not installed. Install with: pip install fastembed"
             )
-        
+
         self.embedding_type = "local"
-        # Use a good free model for medical/general text
-        local_model = settings.local_embedding_model or "all-MiniLM-L6-v2"
-        
-        logger.info(f"Loading local embedding model: {local_model}")
-        self.local_model = SentenceTransformer(local_model)
-        self.dimension = self.local_model.get_sentence_embedding_dimension()
+        local_model = settings.local_embedding_model or "BAAI/bge-small-en-v1.5"
+
+        logger.info(f"Loading fastembed model: {local_model}")
+        self.local_model = TextEmbedding(local_model)
+        # Detect dimension by embedding a dummy string
+        self.dimension = len(next(self.local_model.embed(["dim_probe"])))
         self.model = local_model
-        
-        logger.info(f" Local embeddings ready! Model: {local_model}, Dimension: {self.dimension}")
+
+        logger.info(f"fastembed ready! Model: {local_model}, Dimension: {self.dimension}")
     
     def _init_openai_embeddings(self):
         """Initialize OpenAI embeddings"""
@@ -96,9 +97,9 @@ class EmbeddingGenerator:
         
         try:
             if self.embedding_type == "local":
-                # Use local sentence-transformers (FREE)
-                text = self._truncate_text(text, max_tokens=512)  # Local models have smaller context
-                embedding = self.local_model.encode(text, convert_to_numpy=True)
+                # Use fastembed (ONNX, no PyTorch)
+                text = self._truncate_text(text, max_tokens=512)
+                embedding = next(self.local_model.embed([text]))
                 return embedding.tolist()
             
             else:
@@ -146,44 +147,33 @@ class EmbeddingGenerator:
             # Filter out empty texts
             valid_texts = [text for text in texts if text and text.strip()]
             if self.embedding_type == "local":
-                # Use local sentence-transformers (FREE)
+                # Use fastembed (ONNX, no PyTorch)
                 truncated_texts = [
-                    self._truncate_text(text, max_tokens=512) 
+                    self._truncate_text(text, max_tokens=512)
                     for text in valid_texts
                 ]
-                
-                embeddings = self.local_model.encode(
-                    truncated_texts,
-                    convert_to_numpy=True,
-                    show_progress_bar=True
-                )
-                
-                logger.info(f"Generated {len(embeddings)} embeddings locally (FREE)")
-                
-                return embeddings.tolist()
+
+                embeddings = list(self.local_model.embed(truncated_texts))
+
+                logger.info(f"Generated {len(embeddings)} embeddings via fastembed (FREE)")
+
+                return [emb.tolist() for emb in embeddings]
             
             else:
                 # Use OpenAI
                 truncated_texts = [
-                    self._truncate_text(text, max_tokens=8000) 
+                    self._truncate_text(text, max_tokens=8000)
                     for text in valid_texts
                 ]
-                
+
                 response = self.client.embeddings.create(
                     model=self.model,
                     input=truncated_texts
                 )
-                
+
                 embeddings = [item.embedding for item in response.data]
-                
                 logger.info(f"Generated {len(embeddings)} embeddings via OpenAI")
-                
-                
-            embeddings = [item.embedding for item in response.data]
-            
-            logger.info(f"Generated {len(embeddings)} embeddings in batch")
-            
-            return embeddings
+                return embeddings
             
         except Exception as e:
             logger.error(f"Batch embedding generation failed: {e}")
@@ -210,33 +200,7 @@ class EmbeddingGenerator:
         return self.dimension
 
 
-class LocalEmbeddingGenerator:
-    """
-    Future: Local embedding generator using sentence-transformers.
-    Useful for privacy-sensitive applications or offline usage.
-    """
-    
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        """
-        Initialize local embedding model.
-        
-        Args:
-            model_name: HuggingFace model name for sentence-transformers
-        """
-        self.model_name = model_name
-        logger.info("LocalEmbeddingGenerator - To be implemented")
-        
-        # TODO: Implement with sentence-transformers
-        # from sentence_transformers import SentenceTransformer
-        # self.model = SentenceTransformer(model_name)
-    
-    def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding using local model."""
-        raise NotImplementedError("Local embeddings not yet implemented")
-    
-    def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for multiple texts."""
-        raise NotImplementedError("Local embeddings not yet implemented")
+
 
 
 # Example usage
