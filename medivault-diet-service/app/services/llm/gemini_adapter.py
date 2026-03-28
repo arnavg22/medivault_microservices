@@ -102,8 +102,12 @@ class GeminiAdapter(BaseLLMAdapter):
                 ),
             )
 
-            # Gemini expects alternating user/model. The last message should be user.
-            # If history has items, we use chat; otherwise a simple generate_content.
+            # Gemini expects alternating user/model. The last message MUST be user.
+            # Ensure history alternates properly and ends with user.
+            if gemini_history and gemini_history[-1]["role"] != "user":
+                # If last message isn't user, append a continuation prompt
+                gemini_history.append({"role": "user", "parts": ["Please continue with the diet plan."]})
+
             if len(gemini_history) > 1:
                 # Start chat with history minus the last user message
                 chat_history = gemini_history[:-1]

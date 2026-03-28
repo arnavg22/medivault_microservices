@@ -49,10 +49,12 @@ class DietSession(Document):
 
     def is_expired(self) -> bool:
         exp = self.expires_at
-        # Ensure both sides are offset-aware for comparison
+        # MongoDB stores datetimes in UTC. If the driver returns a naive datetime,
+        # it is already UTC — just attach the tzinfo without converting.
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) > exp
+        now = datetime.now(timezone.utc)
+        return now > exp
 
     def touch(self) -> None:
         """Update timestamps and slide the expiry window."""

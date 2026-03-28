@@ -170,9 +170,6 @@ class MedicalTextSplitter:
             f"{len(text_chunks)} text) from '{document.get('filename', 'unknown')}'"
         )
         return all_chunks
-        
-        logger.info(f"Created {len(chunks)} chunks from document '{document.get('filename', 'unknown')}'")
-        return chunks
     
     def _extract_table_chunks(self, text: str, document: Dict[str, any]) -> List[Dict[str, any]]:
         """

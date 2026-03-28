@@ -59,7 +59,7 @@ class MongoDBVectorStore:
             {
               "type": "vector",
               "path": "embedding",
-              "numDimensions": 768,
+              "numDimensions": 384,  // Must match embedding model (bge-small-en-v1.5=384, bge-base-en-v1.5=768)
               "similarity": "cosine"
             },
             {
@@ -123,10 +123,22 @@ class MongoDBVectorStore:
             embeddings = self.embedding_generator.generate_embeddings_batch(texts)
         except Exception as e:
             logger.error(f"Batch embedding failed, falling back to individual: {e}")
-            embeddings = [
-                self.embedding_generator.generate_embedding(text) 
-                for text in texts
-            ]
+            embeddings = []
+            for text in texts:
+                try:
+                    embeddings.append(self.embedding_generator.generate_embedding(text))
+                except ValueError:
+                    logger.warning(f"Skipping empty chunk during embedding")
+                    embeddings.append(None)
+
+        # Filter out chunks that failed embedding (empty text)
+        valid_pairs = [
+            (chunk, emb) for chunk, emb in zip(chunks, embeddings) if emb is not None
+        ]
+        if len(valid_pairs) < len(chunks):
+            logger.warning(f"Skipped {len(chunks) - len(valid_pairs)} chunks with empty text")
+        chunks = [p[0] for p in valid_pairs]
+        embeddings = [p[1] for p in valid_pairs]
         
         # Prepare documents for insertion (PRODUCTION SCHEMA)
         documents = []

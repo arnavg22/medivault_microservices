@@ -83,9 +83,12 @@ class ClaudeAdapter(BaseLLMAdapter):
 
         system_text = "\n\n".join(system_parts) if system_parts else ""
 
-        # Ensure messages start with a user message (Claude requirement)
+        # Claude requires messages to start with a user message.
+        # If first message is assistant, prepend the system context as a user turn
+        # so Claude has proper context rather than a confusing "Please continue."
         if claude_messages and claude_messages[0]["role"] != "user":
-            claude_messages.insert(0, {"role": "user", "content": "Please continue."})
+            prefix = system_text[:200] + "..." if len(system_text) > 200 else system_text
+            claude_messages.insert(0, {"role": "user", "content": prefix or "Generate the diet plan based on my preferences."})
 
         try:
             response = await client.messages.create(

@@ -166,8 +166,10 @@ async def fetch_patient_context(patient_id: str, jwt_token: str) -> PatientConte
                 from bson import ObjectId
 
                 db = get_db()
-                main_db_name = settings.medivault_api_base_url.split("/")[-2] if "/" in settings.medivault_api_base_url else "medivault"
-                main_db = db.client["medivault"]
+                if db is None:
+                    raise ValueError("Database not initialized")
+                main_db_name = settings.medivault_db_name if hasattr(settings, 'medivault_db_name') else "medivault"
+                main_db = db.client[main_db_name]
                 patient_doc = await main_db.patients.find_one(
                     {"_id": ObjectId(patient_id)}
                 )

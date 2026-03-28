@@ -227,8 +227,8 @@ async def fetch_vector_context(
         )
         return []
 
-    # 3. Filter out low-relevance chunks (score < 0.70)
-    MIN_SCORE = 0.70
+    # 3. Filter out low-relevance chunks
+    MIN_SCORE = getattr(settings, 'vector_min_score', 0.60)
     results: List[Dict[str, Any]] = []
     for doc in raw_results:
         score = doc.get("score", 0.0)

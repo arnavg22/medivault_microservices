@@ -92,8 +92,8 @@ class EmbeddingGenerator:
             Embedding vector as list of floats
         """
         if not text or not text.strip():
-            logger.warning("Empty text provided for embedding")
-            return [0.0] * self.dimension
+            logger.warning("Empty text provided for embedding — skipping")
+            raise ValueError("Cannot generate embedding for empty text")
         
         try:
             if self.embedding_type == "local":
@@ -188,10 +188,10 @@ class EmbeddingGenerator:
         
         if len(text) <= max_chars:
             return text
-        
-        # Truncate and add indicator
-        truncated = text[:max_chars - 20] + " [truncated...]"
-        logger.debug(f"Truncated text from {len(text)} to {len(truncated)} chars")
+
+        # Truncate cleanly — do NOT add markers as they pollute the embedding
+        truncated = text[:max_chars]
+        logger.debug(f"Truncated text from {len(text)} to {len(truncated)} chars for embedding")
         
         return truncated
     
