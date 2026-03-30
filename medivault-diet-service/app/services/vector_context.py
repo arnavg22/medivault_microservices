@@ -25,14 +25,23 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
 import structlog
 
 from app.config.settings import Settings
 
 logger = structlog.get_logger("vector_context")
 
-# Shared async HF Inference client (reused across requests)
-_hf_client = None
+# Shared async HTTP client (reused across requests)
+_hf_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_hf_client() -> httpx.AsyncClient:
+    """Lazy-init a shared httpx async client with connection pooling."""
+    global _hf_client
+    if _hf_client is None or _hf_client.is_closed:
+        _hf_client = httpx.AsyncClient(timeout=30.0)
+    return _hf_client
 
 
 async def get_embedding(text: str, settings: Settings) -> List[float]:
@@ -44,8 +53,8 @@ async def get_embedding(text: str, settings: Settings) -> List[float]:
       2. HuggingFace Inference API (BAAI/bge-base-en-v1.5, 768 dim, zero local RAM)
          (Gemini skipped: gemini-embedding-001 returns 3072 dims, mismatches Atlas index)
 
-    Groq and Anthropic do not support embeddings — skipped.
-    Never crashes — returns empty list on total failure.
+    Groq and Anthropic do not support embeddings \u2014 skipped.
+    Never crashes \u2014 returns empty list on total failure.
     """
     # 1. Try OpenAI
     if settings.openai_api_key and settings.openai_api_key.strip():
@@ -76,7 +85,7 @@ async def get_embedding(text: str, settings: Settings) -> List[float]:
     #    Atlas vector index is fixed at 768 dims (matching the RAG bot's index).
     #    Enabling it would silently break vector search with a dimension mismatch.
 
-    # 3. HuggingFace Inference API (free tier — same model, zero local RAM)
+    # 3. HuggingFace Inference API (free tier \u2014 same model, zero local RAM)
     if settings.hf_api_token and settings.hf_api_token.strip():
         try:
             embedding = await _get_hf_embedding(text, settings.embedding_model, settings.hf_api_token)
@@ -94,27 +103,35 @@ async def get_embedding(text: str, settings: Settings) -> List[float]:
                 error=str(exc),
             )
 
-    # Total failure — return empty
+    # Total failure \u2014 return empty
     logger.error("all_embedding_providers_failed")
     return []
 
 
 async def _get_hf_embedding(text: str, model_name: str, api_token: str) -> List[float]:
     """
-    Call the HuggingFace Inference API to generate an embedding.
-    Uses the official AsyncInferenceClient — same models as sentence-transformers,
-    but runs on HF's infrastructure (zero local RAM).
+    Call the HuggingFace Inference API via httpx to generate an embedding.
+    Uses the router endpoint \u2014 same models as sentence-transformers,
+    but runs on HF's infrastructure (zero local RAM, no heavy dependencies).
     """
-    global _hf_client
+    url = f"https://router.huggingface.co/hf-inference/models/{model_name}"
+    headers = {"Authorization": f"Bearer {api_token}"}
+    payload = {"inputs": text, "options": {"wait_for_model": True}}
 
-    if _hf_client is None:
-        from huggingface_hub import AsyncInferenceClient
-        _hf_client = AsyncInferenceClient(token=api_token)
+    client = _get_hf_client()
+    response = await client.post(url, json=payload, headers=headers)
+    response.raise_for_status()
 
-    result = await _hf_client.feature_extraction(text, model=model_name)
+    embedding = response.json()
 
-    # result is a numpy ndarray (768,) — convert to list
-    embedding = result.tolist()
+    if not isinstance(embedding, list) or len(embedding) == 0:
+        raise ValueError(f"Unexpected HF API response format: {type(embedding)}")
+
+    # Handle token-level embeddings (list of lists) \u2192 mean pool
+    if isinstance(embedding[0], list):
+        dim = len(embedding[0])
+        n = len(embedding)
+        embedding = [sum(embedding[t][d] for t in range(n)) / n for d in range(dim)]
 
     # Normalize (matches sentence-transformers normalize_embeddings=True)
     norm = sum(x * x for x in embedding) ** 0.5
