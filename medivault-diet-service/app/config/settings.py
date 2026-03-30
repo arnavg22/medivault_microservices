@@ -57,8 +57,11 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     # Must produce embeddings matching the RAG bot's vector index dimensions (768).
     # If OPENAI_API_KEY is set, uses text-embedding-3-small (dim=768 to match index).
-    # If GEMINI_API_KEY is set, uses text-embedding-004 (768 dim natively).
-    # Otherwise falls back to local sentence-transformers with this model.
+    # Otherwise falls back to HuggingFace Inference API with this model (zero local RAM).
+
+    hf_api_token: str = ""
+    # HuggingFace API token for the free Inference API (embeddings).
+    # Get one at https://huggingface.co/settings/tokens
 
     # ── Session Config ───────────────────────────────────────────────────
     session_max_messages: int = 100

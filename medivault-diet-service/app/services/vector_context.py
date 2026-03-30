@@ -31,9 +31,8 @@ from app.config.settings import Settings
 
 logger = structlog.get_logger("vector_context")
 
-# Module-level cache for the sentence-transformers model (loaded once)
-_st_model = None
-_st_model_lock = asyncio.Lock()
+# Shared async HF Inference client (reused across requests)
+_hf_client = None
 
 
 async def get_embedding(text: str, settings: Settings) -> List[float]:
@@ -42,7 +41,7 @@ async def get_embedding(text: str, settings: Settings) -> List[float]:
 
     Priority order:
       1. OpenAI (text-embedding-3-small, dim=768 to match RAG index)
-      2. Sentence-transformers local fallback (BAAI/bge-base-en-v1.5, 768 dim)
+      2. HuggingFace Inference API (BAAI/bge-base-en-v1.5, 768 dim, zero local RAM)
          (Gemini skipped: gemini-embedding-001 returns 3072 dims, mismatches Atlas index)
 
     Groq and Anthropic do not support embeddings — skipped.
@@ -74,55 +73,54 @@ async def get_embedding(text: str, settings: Settings) -> List[float]:
             )
 
     # 2. Gemini embedding skipped: gemini-embedding-001 returns 3072 dims but the
-    #    Atlas vector index is fixed at 768 dims (matching sentence-transformers).
+    #    Atlas vector index is fixed at 768 dims (matching the RAG bot's index).
     #    Enabling it would silently break vector search with a dimension mismatch.
 
-    # 3. Sentence-transformers local fallback
-    try:
-        embedding = await _get_local_embedding(text, settings.embedding_model)
-        logger.info(
-            "embedding_generated",
-            provider="sentence-transformers",
-            model=settings.embedding_model,
-            dimensions=len(embedding),
-        )
-        return embedding
-    except Exception as exc:
-        logger.error(
-            "sentence_transformers_embedding_failed",
-            model=settings.embedding_model,
-            error=str(exc),
-        )
+    # 3. HuggingFace Inference API (free tier — same model, zero local RAM)
+    if settings.hf_api_token and settings.hf_api_token.strip():
+        try:
+            embedding = await _get_hf_embedding(text, settings.embedding_model, settings.hf_api_token)
+            logger.info(
+                "embedding_generated",
+                provider="huggingface-inference",
+                model=settings.embedding_model,
+                dimensions=len(embedding),
+            )
+            return embedding
+        except Exception as exc:
+            logger.error(
+                "hf_inference_embedding_failed",
+                model=settings.embedding_model,
+                error=str(exc),
+            )
 
     # Total failure — return empty
     logger.error("all_embedding_providers_failed")
     return []
 
 
-async def _get_local_embedding(text: str, model_name: str) -> List[float]:
-    """Load sentence-transformers model (cached) and generate embedding."""
-    global _st_model
+async def _get_hf_embedding(text: str, model_name: str, api_token: str) -> List[float]:
+    """
+    Call the HuggingFace Inference API to generate an embedding.
+    Uses the official AsyncInferenceClient — same models as sentence-transformers,
+    but runs on HF's infrastructure (zero local RAM).
+    """
+    global _hf_client
 
-    async with _st_model_lock:
-        if _st_model is None:
-            from sentence_transformers import SentenceTransformer
+    if _hf_client is None:
+        from huggingface_hub import AsyncInferenceClient
+        _hf_client = AsyncInferenceClient(token=api_token)
 
-            loop = asyncio.get_running_loop()
-            _st_model = await loop.run_in_executor(
-                None,
-                lambda: SentenceTransformer(model_name),
-            )
-            logger.info(
-                "sentence_transformers_model_loaded",
-                model=model_name,
-                dimensions=_st_model.get_sentence_embedding_dimension(),
-            )
+    result = await _hf_client.feature_extraction(text, model=model_name)
 
-    loop = asyncio.get_running_loop()
-    embedding = await loop.run_in_executor(
-        None,
-        lambda: _st_model.encode(text, normalize_embeddings=True).tolist(),
-    )
+    # result is a numpy ndarray (768,) — convert to list
+    embedding = result.tolist()
+
+    # Normalize (matches sentence-transformers normalize_embeddings=True)
+    norm = sum(x * x for x in embedding) ** 0.5
+    if norm > 0:
+        embedding = [x / norm for x in embedding]
+
     return embedding
 
 
