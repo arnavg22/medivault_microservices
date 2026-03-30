@@ -16,4 +16,5 @@ slowapi==0.1.9
 structlog==24.4.0
 python-multipart==0.0.20
 # sentence-transformers removed — using HuggingFace Inference API instead (zero RAM)
+# Install huggingface-hub WITHOUT pulling torch/numpy heavy extras
 huggingface-hub>=0.20.0
