@@ -399,11 +399,13 @@ async def process_chat_message(
     await session_service.increment_message_count(session, 2)
 
     # 12. Parse updated diet plan if present
+    updated_plan = None
     if is_plan:
         plan_dict = parse_diet_plan(response_text)
         await session_service.update_session_plan(
             session, plan_dict, provider_used
         )
+        updated_plan = plan_dict
 
     logger.info(
         "chat_message_processed",
@@ -419,7 +421,7 @@ async def process_chat_message(
         message_id=str(assistant_msg_doc.id),
         role="assistant",
         content=response_text,
-        diet_plan=None,
+        diet_plan=updated_plan,
         provider_used=provider_used,
         provider_switched=switched,
         previous_provider=prev_provider if switched else None,
