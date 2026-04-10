@@ -368,14 +368,46 @@ def _extract_general_guidelines(text: str) -> List[str]:
 
 
 def _extract_foods_to_avoid(text: str) -> List[str]:
-    """Extract foods to avoid, from either a table or a bullet list."""
+    """Extract foods to avoid AND drug-food interactions into one combined list."""
+    results: List[str] = []
+
+    # 1. Extract "Foods to Avoid" section
     m = re.search(
         r"#{2,4}\s*Foods?\s+to\s+Avoid\s*\n([\s\S]+?)(?=\n#{2,4}\s|\Z)",
         text, re.IGNORECASE,
     )
-    if not m:
-        return []
-    section = m.group(1)
+    if m:
+        results.extend(_parse_avoid_section(m.group(1)))
+
+    # 2. Extract "Drug-Food Interactions" section and merge
+    m2 = re.search(
+        r"#{2,4}\s*Drug[\s-]*Food\s+Interactions?\s*(?:\(Critical\))?\s*\n([\s\S]+?)(?=\n#{2,4}\s|\Z)",
+        text, re.IGNORECASE,
+    )
+    if m2:
+        section = m2.group(1)
+        table_rows = re.findall(r"^\|(.+)\|$", section, re.MULTILINE)
+        for row in table_rows:
+            cells = [c.strip() for c in row.split("|")]
+            cells = [c for c in cells if c]
+            if not cells or all(re.match(r"^[-:]+$", c) for c in cells):
+                continue
+            if cells[0].lower() in ("medication", "medicine", "drug"):
+                continue
+            med = cells[0].strip()
+            food = cells[1].strip() if len(cells) > 1 else ""
+            why = cells[2].strip() if len(cells) > 2 else ""
+            if med and food:
+                entry = f"{med}: avoid {food}"
+                if why:
+                    entry += f" ({why})"
+                results.append(entry)
+
+    return results
+
+
+def _parse_avoid_section(section: str) -> List[str]:
+    """Parse a foods-to-avoid section from table rows or bullets."""
     results: List[str] = []
 
     # Try table rows first: | Food | Reason |
